@@ -1,5 +1,5 @@
-#!/usr/bin/python2
-# -*- coding: utf-8 -*-
+#!/bin/env python3
+
 # Copyright 2015, 2017 Ryan Sawhill Aroha <rsaw@redhat.com>
 #
 #    This program is free software: you can redistribute it and/or modify
@@ -12,28 +12,29 @@
 #    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
 #    General Public License <gnu.org/licenses/gpl.html> for more details.
 
-from __future__ import print_function
 import argparse
 import time
-import errno
+
+# import errno
 import subprocess
 import os
 import logging
 import signal
-from sys import stdin, stderr, exit
-from shutil import rmtree
-from stat import S_IWRITE
+import sys
 
-prog = 'rguard'
+# from shutil import rmtree
+# from stat import S_IWRITE
+# import datetime
+
+prog = "rguard"
 vers = {}
-vers['version'] = '1.0.1'
-vers['date'] = '2017/04/26'
+vers["version"] = "2.0.0"
+vers["date"] = "2020/10/08"
 
 
 def ret(returnCode):
     """Return True if *returnCode* is 0."""
-    if returnCode == 0:
-        return True
+    return returnCode == 0
 
 
 def call(cmd, showStdout=True, shell=False):
@@ -41,7 +42,7 @@ def call(cmd, showStdout=True, shell=False):
     if showStdout:
         rc = subprocess.call(cmd, shell=shell)
     else:
-        with open(os.devnull, 'w') as n:
+        with open(os.devnull, "w") as n:
             rc = subprocess.call(cmd, shell=shell, stdout=n)
     if ret(rc):
         return True
@@ -58,40 +59,49 @@ class RebootGuard:
     After initialization, call guard(enforce=True) or guard(enforce=False)
     """
 
-    def __init__(self, blockMethod='systemd_refusemanualstart'):
+    def __init__(self, blockMethod="systemd_refusemanualstart"):
         """Initialize reboot-blocking method choice.
 
         rsaw says: Please feel free to add other methods.
         """
         possibleBlockMethods = {
-            'systemd_refusemanualstart': self.reboot_guard_systemd_refusemanualstart,
-            # FIXME: Wouldn't be all that useful right now, but it's worth implementing:
-            ##'systemd_inhibitorlock': self.reboot_guard_systemd_inhibitorlock,
-            }
+            "systemd_refusemanualstart": (
+                self.reboot_guard_systemd_refusemanualstart
+            ),
+            # FIXME: Wouldn't be all that useful right now,
+            # but it's worth implementing:
+            # 'systemd_inhibitorlock': self.reboot_guard_systemd_inhibitorlock,
+        }
         if blockMethod in possibleBlockMethods:
             self.blockMethod = possibleBlockMethods[blockMethod]
         else:
-            raise ValueError("Invalid blockMethod (''); valid choices:\n  {}"
-                             .format(blockMethod, ", ".join(possibleBlockMethods.keys())))
+            raise ValueError(
+                f"Invalid blockMethod ('{blockMethod}'); "
+                f"valid choices:\n  {', '.join(possibleBlockMethods.keys())}"
+            )
 
     def guard(self, enforce=True):
         """Enable or disable reboot-guard."""
         self.blockMethod(enforce)
 
-    def reboot_guard_systemd_refusemanualstart(self, enforce=True, targets=[]):
-        """Block/unblock entering targets by way of RefuseManualStart=yes/no."""
+    def reboot_guard_systemd_refusemanualstart(
+            self, enforce=True, targets=None):
+        """
+        Block/unblock entering targets by way of
+        RefuseManualStart=yes/no.
+        """
         if not targets:
             targets = [
-            'poweroff',
-            'reboot',
-            'halt',
-            # 'hibernate',
-            # 'hybrid-sleep',
-            # 'suspend',
+                "poweroff",
+                "reboot",
+                "halt",
+                # 'hibernate',
+                # 'hybrid-sleep',
+                # 'suspend',
             ]
         reloadDaemon = False
         for t in targets:
-            t += '.target'
+            t += ".target"
             if enforce:
                 if self.add_systemd_unit_start_block(t):
                     reloadDaemon = True
@@ -100,60 +110,74 @@ class RebootGuard:
                     reloadDaemon = True
         if reloadDaemon:
             logging.debug("Reloading systemd via: systemctl daemon-reload")
-            if not ret(subprocess.call(['systemctl', 'daemon-reload'])):
+            if not ret(subprocess.call(["systemctl", "daemon-reload"])):
                 logging.error("Unexpected error reloading systemd")
 
     def systemd_unit_is_blocked(self, unit):
-        """Return True if systemd *unit* is configured with RefuseManualStart=yes"""  
-        cmd = ['systemctl', 'show', unit, '-p', 'RefuseManualStart']
+        """
+        Return True if systemd *unit* is configured with
+        RefuseManualStart=yes
+        """
+        cmd = ["systemctl", "show", unit, "-p", "RefuseManualStart"]
         try:
             out = subprocess.check_output(cmd)
-        except:
-            logging.error("Unexpected error running: {}".format(' '.join(cmd)))
+        except subprocess.SubprocessError:
+            logging.error(f"Unexpected error running: {' '.join(cmd)}")
             return
-        if out.strip() == 'RefuseManualStart=yes':
+        if out.strip() == "RefuseManualStart=yes":
             return True
 
-    def add_systemd_unit_start_block(self, unit, cfgFileName='reboot-guard.conf'):
-        """Return True after successfully adding a block to prevent start of *unit*."""
+    def add_systemd_unit_start_block(
+            self, unit, cfgFileName="reboot-guard.conf"):
+        """
+        Return True after successfully adding a block
+        to prevent start of *unit*.
+        """
         if self.systemd_unit_is_blocked(unit):
-            logging.debug("Unit {} already configured with RefuseManualStart=yes".format(unit))
+            logging.debug(
+                f"Unit {unit} already configured with RefuseManualStart=yes"
+            )
         else:
-            dir = '/run/systemd/system/{}.d'.format(unit)
-            cfg = '{}/{}'.format(dir, cfgFileName)
+            dir = f"/run/systemd/system/{unit}.d"
+            cfg = "{}/{}".format(dir, cfgFileName)
             if self.mkdir_p(dir):
                 logging.debug("Adding RefuseManualStart=yes to {}".format(cfg))
                 try:
-                    with open(cfg, 'w') as f:
-                        f.write('[Unit]\nRefuseManualStart=yes\n')
-                except:
-                    logging.error("Unexpected error writing to '{}'".format(cfg))
+                    with open(cfg, "w") as f:
+                        f.write("[Unit]\nRefuseManualStart=yes\n")
+                except (IOError, PermissionError):
+                    logging.error(
+                        f"Unexpected error writing to '{cfg}'")
                 else:
-                    logging.warning("☹  Blocked {}".format(unit))
+                    logging.warning(f"☹  Blocked {unit}")
                     return True
 
-    def del_systemd_unit_start_block(self, unit, cfgFileName='reboot-guard.conf'):
+    def del_systemd_unit_start_block(
+            self, unit, cfgFileName="reboot-guard.conf"):
         """Return True after successfully unblocking manual start of *unit*."""
         if not self.systemd_unit_is_blocked(unit):
-            logging.debug("Unit {} already configured with RefuseManualStart=no".format(unit))
+            logging.debug(
+                f"Unit {unit} already configured with RefuseManualStart=no"
+            )
         else:
-            dir = '/run/systemd/system/{}.d'.format(unit)
-            cfg = '{}/{}'.format(dir, cfgFileName)
+            dir_name = f"/run/systemd/system/{unit}.d"
+            cfg = f"{dir_name}/{cfgFileName}"
             logging.debug("Removing {}".format(cfg))
             if self.rm_rf(cfg):
-                logging.warning("☻  Unblocked {}".format(unit))
+                logging.warning(f"☻  Unblocked {unit}")
                 return True
 
     def mkdir_p(self, path):
         """Make directory *path*."""
-        if call(['mkdir', '-p', path]):
+        if call(["mkdir", "-p", path]):
             return True
         else:
-            logging.error("Unexpected error making directory '{}'".format(path))
+            logging.error(
+                "Unexpected error making directory '{}'".format(path))
 
     def rm_rf(self, path):
         """Recursively remove *path*."""
-        if call(['rm', '-rf', path]):
+        if call(["rm", "-rf", path]):
             return True
         else:
             logging.error("Unexpected error deleting path '{}'".format(path))
@@ -165,7 +189,7 @@ class ConditionChecker:
     Keyword arguments:
         - forbidFiles -- Forbidden files for which to check
         - requireFiles -- Required files for which to check
-        - units -- Active systemd units for which to check 
+        - units -- Active systemd units for which to check
         - cmds -- Process cmd names for which to check
         - cmdArgs -- Process cmd name+args for which to check
         - runCmds -- Arbitrary commands to execute (return code is checked)
@@ -176,10 +200,18 @@ class ConditionChecker:
     if all checks pass.
     """
 
-    def __init__(self, forbidFiles=[], requireFiles=[], units=[], cmds=[], cmdArgs=[], runCmds=[]):
+    def __init__(
+        self,
+        forbidFiles=None,
+        requireFiles=None,
+        units=None,
+        cmds=None,
+        cmdArgs=None,
+        runCmds=None
+    ):
         """Initialize condition checks."""
         self.forbidFiles = forbidFiles
-        self.requireFiles = requireFiles 
+        self.requireFiles = requireFiles
         self.units = units
         self.cmds = cmds
         self.cmdArgs = cmdArgs
@@ -188,12 +220,14 @@ class ConditionChecker:
 
     def check_conditions(self):
         """Run through all condition checks and return True if all pass."""
-        if (self.test_forbidden_files() or
-                self.test_required_files() or
-                self.test_active_units() or
-                self.test_running_cmds() or
-                self.test_running_cmd_args() or
-                self.test_execute_commands()):
+        if (
+            self.test_forbidden_files()
+            or self.test_required_files()
+            or self.test_active_units()
+            or self.test_running_cmds()
+            or self.test_running_cmd_args()
+            or self.test_execute_commands()
+        ):
             if self.lastStatus or self.lastStatus is None:
                 logging.warning("☹  Failed a condition-check")
             else:
@@ -211,7 +245,8 @@ class ConditionChecker:
         if self.forbidFiles:
             for f in self.forbidFiles:
                 if os.path.exists(f):
-                    logging.info("✘ Fail: Forbid-file '{}' shouldn't exist".format(f))
+                    logging.info(
+                        "✘ Fail: Forbid-file '{}' shouldn't exist".format(f))
                     return True
             logging.info("✔ Pass: No forbid-files exist")
         elif self.lastStatus is None:
@@ -221,17 +256,19 @@ class ConditionChecker:
         if self.requireFiles:
             for f in self.requireFiles:
                 if not os.path.exists(f):
-                    logging.info("✘ Fail: Require-file '{}' should exist".format(f))
+                    logging.info(
+                        "✘ Fail: Require-file '{}' should exist".format(f))
                     return True
             logging.info("✔ Pass: All require-files exist")
         elif self.lastStatus is None:
             logging.debug("No require-file checks defined")
-    
+
     def test_active_units(self):
         if self.units:
             for u in self.units:
-                if call(['systemctl', 'is-active', u], showStdout=False):
-                    logging.info("✘ Fail: Unit '{}' shouldn't be active".format(u))
+                if call(["systemctl", "is-active", u], showStdout=False):
+                    logging.info(
+                        "✘ Fail: Unit '{}' shouldn't be active".format(u))
                     return True
             logging.info("✔ Pass: No active units match")
         elif self.lastStatus is None:
@@ -240,8 +277,9 @@ class ConditionChecker:
     def test_running_cmds(self):
         if self.cmds:
             for c in self.cmds:
-                if call(['pgrep', '--exact', c], showStdout=False):
-                    logging.info("✘ Fail: Process named '{}' shouldn't exist".format(c))
+                if call(["pgrep", "--exact", c], showStdout=False):
+                    logging.info(
+                        "✘ Fail: Process named '{}' shouldn't exist".format(c))
                     return True
             logging.info("✔ Pass: No running processes match commands")
         elif self.lastStatus is None:
@@ -250,22 +288,25 @@ class ConditionChecker:
     def test_running_cmd_args(self):
         if self.cmdArgs:
             for a in self.cmdArgs:
-                if call(['pgrep', '--full', '--exact', a], showStdout=False):
-                    logging.info("✘ Fail: Process name+args matching '{}' shouldn't exist".format(a))
+                if call(["pgrep", "--full", "--exact", a], showStdout=False):
+                    logging.info(
+                        f"✘ Fail: Process name+args matching '{a}' "
+                        f"shouldn't exist"
+                    )
                     return True
             logging.info("✔ Pass: No running processes match command args")
         elif self.lastStatus is None:
             logging.debug("No command-args checks defined")
 
     def test_execute_commands(self):
-        z = {True: 'zero', False: 'non-zero'}
+        z = {True: "zero", False: "non-zero"}
         if self.runCmds:
             for c in self.runCmds:
                 desiredOutcome = True
-                if '!' in c[0]:
+                if "!" in c[0]:
                     desiredOutcome = False
                     c = c[1:]
-                if '@' in c[0]:
+                if "@" in c[0]:
                     shell = True
                     c = c[1:]
                     logging.debug("Running shell cmd: {}".format(c))
@@ -273,8 +314,12 @@ class ConditionChecker:
                     shell = False
                     logging.debug("Running cmd: {}".format(c))
                     c = c.split()
-                if not call(c, showStdout=False, shell=shell) == desiredOutcome:
-                    logging.info("✘ Fail: Exec-command {{{}}} needs to return {}".format(c, z[desiredOutcome]))
+                if not call(
+                        c, showStdout=False, shell=shell) == desiredOutcome:
+                    logging.info(
+                        f"✘ Fail: Exec-command {{{c}}} needs to return "
+                        f"{z[desiredOutcome]}"
+                    )
                     return True
             logging.info("✔ Pass: All exec-command tests return as required")
         elif self.lastStatus is None:
@@ -302,14 +347,14 @@ class GracefulDeath:
         self.receivedSignal = True
         if signum in [2, 3, 15]:
             self.receivedTermSignal = True
-            
+
 
 class CustomFormatter(argparse.RawDescriptionHelpFormatter):
     """This custom formatter eliminates the duplicate metavar in help lines."""
 
     def _format_action_invocation(self, action):
         if not action.option_strings:
-            metavar, = self._metavar_formatter(action, action.dest)(1)
+            (metavar,) = self._metavar_formatter(action, action.dest)(1)
             return metavar
         else:
             parts = []
@@ -319,12 +364,12 @@ class CustomFormatter(argparse.RawDescriptionHelpFormatter):
                 default = action.dest.upper()
                 args_string = self._format_args(action, default)
                 for option_string in action.option_strings:
-                    parts.append('%s' % option_string)
-                parts[-1] += ' %s'%args_string
-            return ', '.join(parts)
+                    parts.append("%s" % option_string)
+                parts[-1] += " %s" % args_string
+            return ", ".join(parts)
 
 
-helpExamples= """EXAMPLES:
+helpExamples = """EXAMPLES:
   As mentioned above, all of the condition-checking options can be used
   multiple times. All specified checks must pass to allow shutdown.
 
@@ -356,83 +401,152 @@ helpExamples= """EXAMPLES:
            * Allow shutdown only if shell commands FAIL
            * In this example, only if there are no established ssh connections
 
-""".format(prog)
+""".format(
+    prog
+)
 
 
 def parse_args():
     """Parse argv into usable input."""
     # Setup argument parser
-    description = "Block systemd-initiated shutdown until configurable condition checks pass"
-    version = "{} v{} last mod {}".format(prog, vers['version'], vers['date'])
+    description = (
+        "Block systemd-initiated shutdown until configurable condition checks pass"
+    )
+    version = "{} v{} last mod {}".format(prog, vers["version"], vers["date"])
     epilog = (
         "{0}"
         "VERSION:\n"
         "  {1}\n"
-        "  See <http://github.com/ryran/reboot-guard> to report bugs or RFEs").format(helpExamples, version)
-    fmt = lambda prog: CustomFormatter(prog)
+        "  See <http://github.com/ryran/reboot-guard> to report bugs or RFEs"
+    ).format(helpExamples, version)
+
+    def fmt(prog):
+        return CustomFormatter(prog)
+
     p = argparse.ArgumentParser(
         prog=prog,
         description=description,
         add_help=False,
         epilog=epilog,
-        formatter_class=fmt)
+        formatter_class=fmt,
+    )
     # Add args
     g0 = p.add_argument_group(
-        'SET AND QUIT',
-        description="Execute a single action with no condition checks.")
+        "SET AND QUIT", description="Execute a single action with no condition checks."
+    )
     gg0 = g0.add_mutually_exclusive_group()
     gg0.add_argument(
-        '-1', '--install-guard', action='store_true',
-        help="Install reboot-guard and immediately exit")
+        "-1",
+        "--install-guard",
+        action="store_true",
+        help="Install reboot-guard and immediately exit",
+    )
     gg0.add_argument(
-        '-0', '--remove-guard', action='store_true',
-        help="Remove reboot-guard (if present) and immediately exit")
+        "-0",
+        "--remove-guard",
+        action="store_true",
+        help="Remove reboot-guard (if present) and immediately exit",
+    )
     g1 = p.add_argument_group(
-        'CONFIGURE CONDITIONS',
-        description="Establish what condition checks must pass to allow shutdown.\nEach option may be specified multiple times.")
+        "CONFIGURE CONDITIONS",
+        description=(
+            "Establish what condition checks must pass to allow shutdown.\n"
+            "Each option may be specified multiple times."
+        ),
+    )
     g1.add_argument(
-        '-f', '--forbid-file', action='append', metavar='FILE',
-        help="Prevent shutdown while FILE exists")
+        "-f",
+        "--forbid-file",
+        action="append",
+        metavar="FILE",
+        help="Prevent shutdown while FILE exists",
+    )
     g1.add_argument(
-        '-F', '--require-file', action='append', metavar='FILE',
-        help="Prevent shutdown until FILE exists")
+        "-F",
+        "--require-file",
+        action="append",
+        metavar="FILE",
+        help="Prevent shutdown until FILE exists",
+    )
     g1.add_argument(
-        '-u', '--unit', action='append',
-        help="Prevent shutdown while systemd UNIT is active")
+        "-u",
+        "--unit",
+        action="append",
+        help="Prevent shutdown while systemd UNIT is active",
+    )
     g1.add_argument(
-        '-c', '--cmd', action='append', metavar='CMD',
-        help="Prevent shutdown while CMD exactly matches at least 1 running process")
+        "-c",
+        "--cmd",
+        action="append",
+        metavar="CMD",
+        help="Prevent shutdown while CMD exactly matches at least 1 running process",
+    )
     g1.add_argument(
-        '-a', '--args', action='append', metavar='ARGS',
-        help="Prevent shutdown while ARGS exactly matches the full cmd+args of at least 1 running process")
+        "-a",
+        "--args",
+        action="append",
+        metavar="ARGS",
+        help="Prevent shutdown while ARGS exactly matches the full cmd+args of at least 1 running process",
+    )
     g1.add_argument(
-        '-r', '--run', action='append', metavar='COMMAND',
-        help="Prevent shutdown while execution of COMMAND fails; prefix COMMAND with '!' to prevent shutdown while execution succeeds (MORE: Prefix COMMAND with '@' to execute it as a shell command, e.g., to use pipes '|' or other logic; examples: '@cmd|cmd' or '!@cmd|cmd')")
-    g2 = p.add_argument_group(
-        'GENERAL OPTIONS',
-        description="")
+        "-r",
+        "--run",
+        action="append",
+        metavar="COMMAND",
+        help=(
+            "Prevent shutdown while execution of COMMAND fails; prefix COMMAND with '!' to prevent shutdown"
+            " while execution succeeds (MORE: Prefix COMMAND with '@' to execute it as a shell command,"
+            " e.g., to use pipes '|' or other logic; examples: '@cmd|cmd' or '!@cmd|cmd')"
+        ),
+    )
+    g2 = p.add_argument_group("GENERAL OPTIONS", description="")
     g2.add_argument(
-        '-h', '--help', dest='showHelp', action='store_true',
-        help="Show this help message and exit")
+        "-h",
+        "--help",
+        dest="showHelp",
+        action="store_true",
+        help="Show this help message and exit",
+    )
     g2.add_argument(
-        '-i', '--interval', type=float, metavar='SEC', default=60,
-        help="Modify the sleep interval between condition checks (default: 60 seconds)")
+        "-i",
+        "--interval",
+        type=float,
+        metavar="SEC",
+        default=60,
+        help="Modify the sleep interval between condition checks (default: 60 seconds)",
+    )
     g2.add_argument(
-        '-n', '--ignore-signals', action='store_true',
-        help="Ignore the most common signals (HUP, INT, QUIT, USR1, USR2, TERM), in which case a graceful exit requires the next option or else SIGKILL")
+        "-n",
+        "--ignore-signals",
+        action="store_true",
+        help=(
+            "Ignore the most common signals (HUP, INT, QUIT, USR1, USR2, TERM),"
+            " in which case a graceful exit requires the next option or else SIGKILL"
+        ),
+    )
     g2.add_argument(
-        '-x', '--exit-on-pass', action='store_true',
-        help="Exit (and remove reboot-guard) the first time all condition checks pass")
+        "-x",
+        "--exit-on-pass",
+        action="store_true",
+        help="Exit (and remove reboot-guard) the first time all condition checks pass",
+    )
     g2.add_argument(
-        '-v', '--loglevel', choices=['debug', 'info', 'warning', 'error'], default='warning',
-        help="Specify minimum message type to print (default: warning)")
+        "-v",
+        "--loglevel",
+        choices=["debug", "info", "warning", "error"],
+        default="warning",
+        help="Specify minimum message type to print (default: warning)",
+    )
     g2.add_argument(
-        '-t', '--timestamps', action='store_true',
-        help="Enable timestamps in message output (not necessary if running as systemd service)")
-    opts =  p.parse_args()
+        "-t",
+        "--timestamps",
+        action="store_true",
+        help="Enable timestamps in message output (not necessary if running as systemd service)",
+    )
+    opts = p.parse_args()
     if opts.showHelp:
         p.print_help()
-        exit()
+        sys.exit()
     return opts
 
 
@@ -441,12 +555,20 @@ def main():
     sighandler = GracefulDeath()
     opts = parse_args()
     if opts.timestamps:
-        logging.basicConfig(format='%(asctime)s: %(levelname)s: %(message)s', level=opts.loglevel.upper(), datefmt='%m/%d %H:%M:%S')
+        logging.basicConfig(
+            format="%(asctime)s: %(levelname)s: %(message)s",
+            level=opts.loglevel.upper(),
+            datefmt="%m/%d %H:%M:%S",
+        )
     else:
-        logging.basicConfig(format='%(levelname)s: %(message)s', level=opts.loglevel.upper())
+        logging.basicConfig(
+            format="%(levelname)s: %(message)s", level=opts.loglevel.upper()
+        )
     if os.geteuid() > 0:
-        logging.critical("Preemptive permission denied -- exiting because EUID not root")
-        exit(1)
+        logging.critical(
+            "Preemptive permission denied -- exiting because EUID not root"
+        )
+        sys.exit(1)
     # Handle install/remove-and-exit options
     if opts.install_guard or opts.remove_guard:
         r = RebootGuard()
@@ -455,43 +577,49 @@ def main():
         else:
             r.guard(enforce=False)
         logging.info("Exiting due to -1 or -0 option")
-        exit()
+        sys.exit()
     c = ConditionChecker(
         forbidFiles=opts.forbid_file,
         requireFiles=opts.require_file,
         units=opts.unit,
         cmds=opts.cmd,
         cmdArgs=opts.args,
-        runCmds=opts.run)
+        runCmds=opts.run,
+    )
     # Initialize reboot-guard
     r = RebootGuard()
     # Run initial check
     if c.check_conditions():
         if opts.exit_on_pass:
             logging.warning("Exiting due to passed condition checks")
-            exit()
+            sys.exit()
     else:
         r.guard(enforce=True)
     # Run forever-loop
     while True:
         if sighandler.receivedSignal:
             if sighandler.receivedTermSignal and not opts.ignore_signals:
-                logging.warning("Gracefully exiting due to receipt of signal {}".format(sighandler.lastSignal))
+                logging.warning(
+                    "Gracefully exiting due to receipt of signal {}".format(
+                        sighandler.lastSignal
+                    )
+                )
                 r.guard(enforce=False)
-                exit()
+                sys.exit()
             else:
-                logging.warning("Ignoring signal {}".format(sighandler.lastSignal))
+                logging.warning("Ignoring signal {}".format(
+                    sighandler.lastSignal))
                 sighandler.receivedSignal = sighandler.receivedTermSignal = False
         time.sleep(opts.interval)
         if c.check_conditions():
             r.guard(enforce=False)
             if opts.exit_on_pass:
                 logging.warning("Exiting due to passed condition checks")
-                exit()
+                sys.exit()
         else:
             r.guard(enforce=True)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Execute main loop if run directly
     main()
