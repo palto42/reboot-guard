@@ -309,10 +309,10 @@ class ConditionChecker:
                 if "@" in c[0]:
                     shell = True
                     c = c[1:]
-                    logging.debug("Running shell cmd: {}".format(c))
+                    logging.debug(f"Running shell cmd: {c}")
                 else:
                     shell = False
-                    logging.debug("Running cmd: {}".format(c))
+                    logging.debug(f"Running cmd: {c}")
                     c = c.split()
                 if not call(
                         c, showStdout=False, shell=shell) == desiredOutcome:
