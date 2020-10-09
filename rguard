@@ -32,22 +32,13 @@ vers["version"] = "2.0.0"
 vers["date"] = "2020/10/08"
 
 
-def ret(returnCode):
-    """Return True if *returnCode* is 0."""
-    return returnCode == 0
-
-
 def call(cmd, showStdout=True, shell=False):
     """Execute *cmd* and return True on success."""
     if showStdout:
-        rc = subprocess.call(cmd, shell=shell)
+        return subprocess.call(cmd, shell=shell) == 0
     else:
         with open(os.devnull, "w") as n:
-            rc = subprocess.call(cmd, shell=shell, stdout=n)
-    if ret(rc):
-        return True
-    else:
-        return False
+            return subprocess.call(cmd, shell=shell, stdout=n) == 0
 
 
 class RebootGuard:
@@ -103,14 +94,12 @@ class RebootGuard:
         for t in targets:
             t += ".target"
             if enforce:
-                if self.add_systemd_unit_start_block(t):
-                    reloadDaemon = True
+                reloadDaemon |= self.add_systemd_unit_start_block(t)
             else:
-                if self.del_systemd_unit_start_block(t):
-                    reloadDaemon = True
+                reloadDaemon |= self.del_systemd_unit_start_block(t)
         if reloadDaemon:
             logging.debug("Reloading systemd via: systemctl daemon-reload")
-            if not ret(subprocess.call(["systemctl", "daemon-reload"])):
+            if subprocess.call(["systemctl", "daemon-reload"]) != 0:
                 logging.error("Unexpected error reloading systemd")
 
     def systemd_unit_is_blocked(self, unit):
@@ -138,9 +127,9 @@ class RebootGuard:
                 f"Unit {unit} already configured with RefuseManualStart=yes"
             )
         else:
-            dir = f"/run/systemd/system/{unit}.d"
-            cfg = "{}/{}".format(dir, cfgFileName)
-            if self.mkdir_p(dir):
+            dir_name = f"/run/systemd/system/{unit}.d"
+            cfg = f"{dir_name}/{cfgFileName}"
+            if self.mkdir_p(dir_name):
                 logging.debug("Adding RefuseManualStart=yes to {}".format(cfg))
                 try:
                     with open(cfg, "w") as f:
@@ -151,6 +140,7 @@ class RebootGuard:
                 else:
                     logging.warning(f"☹  Blocked {unit}")
                     return True
+        return False
 
     def del_systemd_unit_start_block(
             self, unit, cfgFileName="reboot-guard.conf"):
@@ -166,6 +156,7 @@ class RebootGuard:
             if self.rm_rf(cfg):
                 logging.warning(f"☻  Unblocked {unit}")
                 return True
+        return False
 
     def mkdir_p(self, path):
         """Make directory *path*."""
@@ -174,6 +165,7 @@ class RebootGuard:
         else:
             logging.error(
                 "Unexpected error making directory '{}'".format(path))
+        return False
 
     def rm_rf(self, path):
         """Recursively remove *path*."""
@@ -181,6 +173,7 @@ class RebootGuard:
             return True
         else:
             logging.error("Unexpected error deleting path '{}'".format(path))
+        return False
 
 
 class ConditionChecker:
@@ -251,6 +244,7 @@ class ConditionChecker:
             logging.info("✔ Pass: No forbid-files exist")
         elif self.lastStatus is None:
             logging.debug("No forbid-file checks defined")
+        return False
 
     def test_required_files(self):
         if self.requireFiles:
@@ -262,6 +256,7 @@ class ConditionChecker:
             logging.info("✔ Pass: All require-files exist")
         elif self.lastStatus is None:
             logging.debug("No require-file checks defined")
+        return False
 
     def test_active_units(self):
         if self.units:
@@ -273,6 +268,7 @@ class ConditionChecker:
             logging.info("✔ Pass: No active units match")
         elif self.lastStatus is None:
             logging.debug("No systemd unit checks defined")
+        return False
 
     def test_running_cmds(self):
         if self.cmds:
@@ -284,6 +280,7 @@ class ConditionChecker:
             logging.info("✔ Pass: No running processes match commands")
         elif self.lastStatus is None:
             logging.debug("No command checks defined")
+        return False
 
     def test_running_cmd_args(self):
         if self.cmdArgs:
@@ -297,6 +294,7 @@ class ConditionChecker:
             logging.info("✔ Pass: No running processes match command args")
         elif self.lastStatus is None:
             logging.debug("No command-args checks defined")
+        return False
 
     def test_execute_commands(self):
         z = {True: "zero", False: "non-zero"}
@@ -324,6 +322,7 @@ class ConditionChecker:
             logging.info("✔ Pass: All exec-command tests return as required")
         elif self.lastStatus is None:
             logging.debug("No exec-command checks defined")
+        return False
 
 
 class GracefulDeath:

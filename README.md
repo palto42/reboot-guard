@@ -1,10 +1,11 @@
 # reboot-guard
 Block systemd-initiated poweroff/reboot/halt until configurable condition checks pass
 
+This is a fork of the original [ryan/reboot-guard](https://github.com/ryran/reboot-guard)
 
 ### Requirements
 
-- Python 2.7
+- Python >= 3.6
 - systemd
 - Can be launched from a simple systemd service or run manually
 
@@ -15,7 +16,7 @@ Block systemd-initiated poweroff/reboot/halt until configurable condition checks
 
     ```
     [root]# cd /usr/sbin
-    [root]# curl -kO https://raw.githubusercontent.com/ryran/reboot-guard/master/rguard
+    [root]# curl -kO https://github.com/palto42/reboot-guard/raw/Python_3/rguard
       % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
                                      Dload  Upload   Total   Spent    Left  Speed
     100 16575  100 16575    0     0  54536      0 --:--:-- --:--:-- --:--:-- 54702
