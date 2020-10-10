@@ -86,9 +86,9 @@ class RebootGuard:
                 "poweroff",
                 "reboot",
                 "halt",
-                # 'hibernate',
-                # 'hybrid-sleep',
-                # 'suspend',
+                # "hibernate",
+                # "hybrid-sleep",
+                # "suspend",
             ]
         reloadDaemon = False
         for t in targets:
@@ -111,10 +111,12 @@ class RebootGuard:
         try:
             out = subprocess.check_output(cmd)
         except subprocess.SubprocessError:
+            print("ERR")
             logging.error(f"Unexpected error running: {' '.join(cmd)}")
-            return
-        if out.strip() == "RefuseManualStart=yes":
+            return False
+        if out.strip() == b"RefuseManualStart=yes":
             return True
+        return False
 
     def add_systemd_unit_start_block(
             self, unit, cfgFileName="reboot-guard.conf"):
