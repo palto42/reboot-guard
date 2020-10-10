@@ -1,6 +1,7 @@
 #!/bin/env python3
 
 # Copyright 2015, 2017 Ryan Sawhill Aroha <rsaw@redhat.com>
+# Copyright 2020. Matthias Homann <palto@mailbox.org>
 #
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -14,22 +15,18 @@
 
 import argparse
 import time
-
-# import errno
 import subprocess
 import os
 import logging
 import signal
 import sys
 
-# from shutil import rmtree
-# from stat import S_IWRITE
-# import datetime
 
 prog = "rguard"
-vers = {}
-vers["version"] = "2.0.0"
-vers["date"] = "2020/10/08"
+vers = {
+    "version": "2.0.0",
+    "date": "2020/10/08",
+}
 
 
 def call(cmd, showStdout=True, shell=False):
@@ -56,9 +53,7 @@ class RebootGuard:
         rsaw says: Please feel free to add other methods.
         """
         possibleBlockMethods = {
-            "systemd_refusemanualstart": (
-                self.reboot_guard_systemd_refusemanualstart
-            ),
+            "systemd_refusemanualstart": (self.reboot_guard_systemd_refusemanualstart),
             # FIXME: Wouldn't be all that useful right now,
             # but it's worth implementing:
             # 'systemd_inhibitorlock': self.reboot_guard_systemd_inhibitorlock,
@@ -75,8 +70,7 @@ class RebootGuard:
         """Enable or disable reboot-guard."""
         self.blockMethod(enforce)
 
-    def reboot_guard_systemd_refusemanualstart(
-            self, enforce=True, targets=None):
+    def reboot_guard_systemd_refusemanualstart(self, enforce=True, targets=None):
         """
         Block/unblock entering targets by way of
         RefuseManualStart=yes/no.
@@ -118,43 +112,36 @@ class RebootGuard:
             return True
         return False
 
-    def add_systemd_unit_start_block(
-            self, unit, cfgFileName="reboot-guard.conf"):
+    def add_systemd_unit_start_block(self, unit, cfgFileName="reboot-guard.conf"):
         """
         Return True after successfully adding a block
         to prevent start of *unit*.
         """
         if self.systemd_unit_is_blocked(unit):
-            logging.debug(
-                f"Unit {unit} already configured with RefuseManualStart=yes"
-            )
+            logging.debug(f"Unit {unit} already configured with RefuseManualStart=yes")
         else:
             dir_name = f"/run/systemd/system/{unit}.d"
             cfg = f"{dir_name}/{cfgFileName}"
             if self.mkdir_p(dir_name):
-                logging.debug("Adding RefuseManualStart=yes to {}".format(cfg))
+                logging.debug(f"Adding RefuseManualStart=yes to {cfg}")
                 try:
                     with open(cfg, "w") as f:
                         f.write("[Unit]\nRefuseManualStart=yes\n")
                 except (IOError, PermissionError):
-                    logging.error(
-                        f"Unexpected error writing to '{cfg}'")
+                    logging.error(f"Unexpected error writing to '{cfg}'")
                 else:
                     logging.warning(f"☹  Blocked {unit}")
                     return True
         return False
 
-    def del_systemd_unit_start_block(
-            self, unit, cfgFileName="reboot-guard.conf"):
+    def del_systemd_unit_start_block(self, unit, cfgFileName="reboot-guard.conf"):
         """Return True after successfully unblocking manual start of *unit*."""
         if not self.systemd_unit_is_blocked(unit):
-            logging.debug(
-                f"Unit {unit} already configured with RefuseManualStart=no"
-            )
+            logging.debug(f"Unit {unit} already configured with RefuseManualStart=no")
         else:
             dir_name = f"/run/systemd/system/{unit}.d"
             cfg = f"{dir_name}/{cfgFileName}"
-            logging.debug("Removing {}".format(cfg))
+            logging.debug(f"Removing {cfg}")
             if self.rm_rf(cfg):
                 logging.warning(f"☻  Unblocked {unit}")
                 return True
@@ -165,8 +152,7 @@ class RebootGuard:
         if call(["mkdir", "-p", path]):
             return True
         else:
-            logging.error(
-                "Unexpected error making directory '{}'".format(path))
+            logging.error(f"Unexpected error making directory '{path}'")
         return False
 
     def rm_rf(self, path):
@@ -174,7 +160,7 @@ class RebootGuard:
         if call(["rm", "-rf", path]):
             return True
         else:
-            logging.error("Unexpected error deleting path '{}'".format(path))
+            logging.error(f"Unexpected error deleting path '{path}'")
         return False
 
 
@@ -202,7 +188,7 @@ class ConditionChecker:
         units=None,
         cmds=None,
         cmdArgs=None,
-        runCmds=None
+        runCmds=None,
     ):
         """Initialize condition checks."""
         self.forbidFiles = forbidFiles
@@ -240,8 +226,7 @@ class ConditionChecker:
         if self.forbidFiles:
             for f in self.forbidFiles:
                 if os.path.exists(f):
-                    logging.info(
-                        "✘ Fail: Forbid-file '{}' shouldn't exist".format(f))
+                    logging.info(f"✘ Fail: Forbid-file '{f}' shouldn't exist")
                     return True
             logging.info("✔ Pass: No forbid-files exist")
         elif self.lastStatus is None:
@@ -252,8 +237,7 @@ class ConditionChecker:
         if self.requireFiles:
             for f in self.requireFiles:
                 if not os.path.exists(f):
-                    logging.info(
-                        "✘ Fail: Require-file '{}' should exist".format(f))
+                    logging.info(f"✘ Fail: Require-file '{f}' should exist")
                     return True
             logging.info("✔ Pass: All require-files exist")
         elif self.lastStatus is None:
@@ -264,8 +248,7 @@ class ConditionChecker:
         if self.units:
             for u in self.units:
                 if call(["systemctl", "is-active", u], showStdout=False):
-                    logging.info(
-                        "✘ Fail: Unit '{}' shouldn't be active".format(u))
+                    logging.info(f"✘ Fail: Unit '{u}' shouldn't be active")
                     return True
             logging.info("✔ Pass: No active units match")
         elif self.lastStatus is None:
@@ -276,8 +259,7 @@ class ConditionChecker:
         if self.cmds:
             for c in self.cmds:
                 if call(["pgrep", "--exact", c], showStdout=False):
-                    logging.info(
-                        "✘ Fail: Process named '{}' shouldn't exist".format(c))
+                    logging.info(f"✘ Fail: Process named '{c}' shouldn't exist")
                     return True
             logging.info("✔ Pass: No running processes match commands")
         elif self.lastStatus is None:
@@ -289,8 +271,7 @@ class ConditionChecker:
             for a in self.cmdArgs:
                 if call(["pgrep", "--full", "--exact", a], showStdout=False):
                     logging.info(
-                        f"✘ Fail: Process name+args matching '{a}' "
-                        f"shouldn't exist"
+                        f"✘ Fail: Process name+args matching '{a}' " f"shouldn't exist"
                     )
                     return True
             logging.info("✔ Pass: No running processes match command args")
@@ -314,8 +295,7 @@ class ConditionChecker:
                     shell = False
                     logging.debug(f"Running cmd: {c}")
                     c = c.split()
-                if not call(
-                        c, showStdout=False, shell=shell) == desiredOutcome:
+                if not call(c, showStdout=False, shell=shell) == desiredOutcome:
                     logging.info(
                         f"✘ Fail: Exec-command {{{c}}} needs to return "
                         f"{z[desiredOutcome]}"
@@ -370,41 +350,39 @@ class CustomFormatter(argparse.RawDescriptionHelpFormatter):
             return ", ".join(parts)
 
 
-helpExamples = """EXAMPLES:
+helpExamples = f"""EXAMPLES:
   As mentioned above, all of the condition-checking options can be used
   multiple times. All specified checks must pass to allow shutdown.
 
-  {0} --forbid-file /shutdown/prevented/if/this/file/exists
+  {prog} --forbid-file /shutdown/prevented/if/this/file/exists
 
-  {0} --require-file /shutdown/prevented/until/this/file/exists
+  {prog} --require-file /shutdown/prevented/until/this/file/exists
 
-  {0} --cmd some-cmd-name-which-when-running-prevents-shutdown
+  {prog} --cmd some-cmd-name-which-when-running-prevents-shutdown
            * e.g., 'bash' or 'firefox'
 
-  {0} --args 'syndaemon -i 1.0 -t -K -R'
+  {prog} --args 'syndaemon -i 1.0 -t -K -R'
            * Prevent shutdown if this exact cmd + args are found running
 
-  {0} --run 'ping -c2 -w1 -W1 10.0.0.1'
+  {prog} --run 'ping -c2 -w1 -W1 10.0.0.1'
            * Allow shutdown only if single command (ping in this case) succeeds
 
-  {0} --run '!ping -c2 -w1 -W1 10.0.0.1'
+  {prog} --run '!ping -c2 -w1 -W1 10.0.0.1'
            * Allow shutdown only if single command FAILS
 
-  {0} --run '!findmnt /mnt'
+  {prog} --run '!findmnt /mnt'
            * Allow shutdown if nothing mounted at mountpoint
 
-  {0} --run '@some_cmd | some_other_cmd; another_cmd'
+  {prog} --run '@some_cmd | some_other_cmd; another_cmd'
            * Allow shutdown only if last cmd in shell succeeds
            * When using '@', full shell syntax is supported
            * e.g.: '|', '&&', '||', ';', '>', '>>', '<', etc
 
-  {0} --run '!@lsof -i:ssh | grep -q ESTABLISHED'
+  {prog} --run '!@lsof -i:ssh | grep -q ESTABLISHED'
            * Allow shutdown only if shell commands FAIL
            * In this example, only if there are no established ssh connections
 
-""".format(
-    prog
-)
+"""
 
 
 def parse_args():
@@ -413,13 +391,13 @@ def parse_args():
     description = (
         "Block systemd-initiated shutdown until configurable condition checks pass"
     )
-    version = "{} v{} last mod {}".format(prog, vers["version"], vers["date"])
+    version = f"{prog} v{vers['version']} last mod {vers['date']}"
     epilog = (
-        "{0}"
-        "VERSION:\n"
-        "  {1}\n"
-        "  See <http://github.com/ryran/reboot-guard> to report bugs or RFEs"
-    ).format(helpExamples, version)
+        f"{helpExamples}"
+        f"VERSION:\n"
+        f"  {version}\n"
+        f"  See <https://github.com/palto42/reboot-guard to report bugs or RFEs"
+    )
 
     def fmt(prog):
         return CustomFormatter(prog)
@@ -601,15 +579,12 @@ def main():
         if sighandler.receivedSignal:
             if sighandler.receivedTermSignal and not opts.ignore_signals:
                 logging.warning(
-                    "Gracefully exiting due to receipt of signal {}".format(
-                        sighandler.lastSignal
-                    )
+                    f"Gracefully exiting due to receipt of signal {sighandler.lastSignal}"
                 )
                 r.guard(enforce=False)
                 sys.exit()
             else:
-                logging.warning("Ignoring signal {}".format(
-                    sighandler.lastSignal))
+                logging.warning(f"Ignoring signal {sighandler.lastSignal}")
                 sighandler.receivedSignal = sighandler.receivedTermSignal = False
         time.sleep(opts.interval)
         if c.check_conditions():

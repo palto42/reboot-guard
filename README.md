@@ -1,20 +1,20 @@
 # reboot-guard
-Block systemd-initiated poweroff/reboot/halt until configurable condition checks pass
 
-This is a fork of the original [ryan/reboot-guard](https://github.com/ryran/reboot-guard)
+Block systemd-initiated poweroff/reboot/halt
 
-### Requirements
+__Note:__ This is a fork of the original [ryan/reboot-guard](https://github.com/ryran/reboot-guard)
+
+## Requirements
 
 - Python >= 3.6
 - systemd
 - Can be launched from a simple systemd service or run manually
 
-
-### Interactive walk-thru: ONE-SHOT
+## Interactive walk-thru: ONE-SHOT
 
 1. Download and execute `rguard` without any condition checks to confirm it really can block shutdown.
 
-    ```
+    ```sh
     [root]# cd /usr/sbin
     [root]# curl -kO https://github.com/palto42/reboot-guard/raw/Python_3/rguard
       % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
@@ -26,12 +26,12 @@ This is a fork of the original [ryan/reboot-guard](https://github.com/ryran/rebo
     WARNING: ☹  Blocked poweroff.target
     WARNING: ☹  Blocked reboot.target
     WARNING: ☹  Blocked halt.target
-    [root]# 
+    [root]#
     ```
 
 1. Try to reboot/shutdown/halt and fail. Note that the old legacy commands (`halt`, `shutdown`, `reboot`) trigger wall messages regardless.
 
-    ```
+    ```sh
     [root]# systemctl reboot
     Failed to issue method call: Operation refused, unit reboot.target may be requested by dependency only.
     [root]# shutdown -h now
@@ -45,31 +45,31 @@ This is a fork of the original [ryan/reboot-guard](https://github.com/ryran/rebo
 
 1. Disable the blocks.
 
-    ```
+    ```sh
     [root]# rguard -0
     WARNING: ☻  Unblocked poweroff.target
     WARNING: ☻  Unblocked reboot.target
     WARNING: ☻  Unblocked halt.target
-    [root]# 
+    [root]#
     ```
 
-### Interactive walk-thru: CONDITION CHECKS
+## Interactive walk-thru: CONDITION CHECKS
 
 1. Execute `rguard` with a tiny sleep-interval and 2 simple checks.
 
-    ```
+    ```sh
     [root]# rguard --interval 15 --unit atd --require-file /run/.require &
     [1] 23317
     WARNING: ☹  Failed a condition-check
     WARNING: ☹  Blocked poweroff.target
     WARNING: ☹  Blocked reboot.target
     WARNING: ☹  Blocked halt.target
-    [root]# 
+    [root]#
     ```
 
 1. The conditions we set meant shutdown will be blocked while atd is active and while `/run/.require` does not exist, so fix that and `rguard` will immediately unblock shutdown.
 
-    ```
+    ```sh
     [root]# systemctl is-active atd
     active
     [root]# systemctl stop atd
@@ -84,8 +84,7 @@ This is a fork of the original [ryan/reboot-guard](https://github.com/ryran/rebo
     WARNING: Gracefully exiting due to receipt of signal 2
     ```
 
-
-### Instructions for daemon service
+## Instructions for daemon service
 
 1. Install the latest rpm from [Releases](https://github.com/ryran/reboot-guard/releases) or setup yum repo:
     - `yum/dnf install http://people.redhat.com/rsawhill/rpms/latest-rsawaroha-release.rpm`
@@ -98,10 +97,9 @@ This is a fork of the original [ryan/reboot-guard](https://github.com/ryran/rebo
 1. Tweak `rguard.service` as required, and then re-run `systemctl daemon-reload; systemctl restart rguard`
 1. Give feedback by posting to the [Issue Tracker](https://github.com/ryran/reboot-guard/issues)
 
+## Help page
 
-### Help page
-
-```
+```sh
 usage: rguard [-1 | -0] [-f FILE] [-F FILE] [-u UNIT] [-c CMD] [-a ARGS]
               [-r COMMAND] [-h] [-i SEC] [-n] [-x]
               [-v {debug,info,warning,error}] [-t]

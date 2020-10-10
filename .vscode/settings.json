@@ -1,9 +1,12 @@
 {
     "cSpell.words": [
         "Aroha",
+        "Dload",
         "EUID",
         "IWRITE",
         "RFEs",
+        "SIGKILL",
+        "Xferd",
         "cmds",
         "datefmt",
         "errno",
@@ -11,9 +14,14 @@
         "geteuid",
         "lsof",
         "nargs",
+        "necesary",
         "pgrep",
+        "poweroff",
         "rguard",
         "rsaw",
-        "signum"
+        "rwxr",
+        "sbin",
+        "signum",
+        "syndaemon"
     ]
 }
