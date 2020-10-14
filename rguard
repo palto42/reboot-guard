@@ -24,18 +24,9 @@ import sys
 
 prog = "rguard"
 vers = {
-    "version": "2.0.0",
-    "date": "2020/10/08",
+    "version": "2.0.2",
+    "date": "2020/14/08",
 }
-
-
-def call(cmd, showStdout=True, shell=False):
-    """Execute *cmd* and return True on success."""
-    if showStdout:
-        return subprocess.call(cmd, shell=shell) == 0
-    else:
-        with open(os.devnull, "w") as n:
-            return subprocess.call(cmd, shell=shell, stdout=n) == 0
 
 
 class RebootGuard:
@@ -93,7 +84,7 @@ class RebootGuard:
                 reloadDaemon |= self.del_systemd_unit_start_block(t)
         if reloadDaemon:
             logging.debug("Reloading systemd via: systemctl daemon-reload")
-            if subprocess.call(["systemctl", "daemon-reload"]) != 0:
+            if subprocess.run(["systemctl", "daemon-reload"]).returncode != 0:
                 logging.error("Unexpected error reloading systemd")
 
     def systemd_unit_is_blocked(self, unit):
@@ -149,19 +140,19 @@ class RebootGuard:
 
     def mkdir_p(self, path):
         """Make directory *path*."""
-        if call(["mkdir", "-p", path]):
+        if subprocess.run(["mkdir", "-p", path]).returncode == 0:
             return True
         else:
             logging.error(f"Unexpected error making directory '{path}'")
-        return False
+            return False
 
     def rm_rf(self, path):
         """Recursively remove *path*."""
-        if call(["rm", "-rf", path]):
+        if subprocess.run(["rm", "-rf", path]).returncode == 0:
             return True
         else:
             logging.error(f"Unexpected error deleting path '{path}'")
-        return False
+            return False
 
 
 class ConditionChecker:
@@ -247,7 +238,12 @@ class ConditionChecker:
     def test_active_units(self):
         if self.units:
             for u in self.units:
-                if call(["systemctl", "is-active", u], showStdout=False):
+                if (
+                    subprocess.run(
+                        ["systemctl", "is-active", u], capture_output=True
+                    ).returncode
+                    == 0
+                ):
                     logging.info(f"✘ Fail: Unit '{u}' shouldn't be active")
                     return True
             logging.info("✔ Pass: No active units match")
@@ -258,7 +254,12 @@ class ConditionChecker:
     def test_running_cmds(self):
         if self.cmds:
             for c in self.cmds:
-                if call(["pgrep", "--exact", c], showStdout=False):
+                if (
+                    subprocess.run(
+                        ["pgrep", "--exact", c], capture_output=True
+                    ).returncode
+                    == 0
+                ):
                     logging.info(f"✘ Fail: Process named '{c}' shouldn't exist")
                     return True
             logging.info("✔ Pass: No running processes match commands")
@@ -269,7 +270,12 @@ class ConditionChecker:
     def test_running_cmd_args(self):
         if self.cmdArgs:
             for a in self.cmdArgs:
-                if call(["pgrep", "--full", "--exact", a], showStdout=False):
+                if (
+                    subprocess.run(
+                        ["pgrep", "--full", "--exact", a], capture_output=True
+                    ).returncode
+                    == 0
+                ):
                     logging.info(
                         f"✘ Fail: Process name+args matching '{a}' " f"shouldn't exist"
                     )
@@ -295,7 +301,9 @@ class ConditionChecker:
                     shell = False
                     logging.debug(f"Running cmd: {c}")
                     c = c.split()
-                if not call(c, showStdout=False, shell=shell) == desiredOutcome:
+                if (
+                    subprocess.run(c, capture_output=True, shell=shell).returncode == 0
+                ) != desiredOutcome:
                     logging.info(
                         f"✘ Fail: Exec-command {{{c}}} needs to return "
                         f"{z[desiredOutcome]}"
@@ -518,6 +526,12 @@ def parse_args():
         help="Exit (and remove reboot-guard) the first time all condition checks pass",
     )
     g2.add_argument(
+        "-b",
+        "--start-blocked",
+        action="store_true",
+        help="Install reboot-guard at start, regardless of initial conditions check",
+    )
+    g2.add_argument(
         "-v",
         "--loglevel",
         choices=["debug", "info", "warning", "error"],
@@ -577,11 +591,13 @@ def main():
     # Initialize signal handler
     _ = GracefulDeath(r)
     # Run initial check
-    if c.check_conditions():
+    if c.check_conditions() and not opts.start_blocked:
         if opts.exit_on_pass:
             logging.warning("Exiting due to passed condition checks")
             sys.exit()
     else:
+        if opts.start_blocked:
+            logging.debug("Forced to start with blocked targets.")
         r.guard(enforce=True)
     # Run forever-loop
     while True:
