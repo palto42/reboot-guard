@@ -6,6 +6,7 @@
         "IWRITE",
         "RFEs",
         "SIGKILL",
+        "SIGUSR",
         "Xferd",
         "cmds",
         "datefmt",
